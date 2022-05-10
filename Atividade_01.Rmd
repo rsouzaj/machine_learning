@@ -1,0 +1,1091 @@
+---
+title: "Atividade avaliativa 1 - Aula de introdução ao Aprendizado de Máquina"
+author: "Ricardo J. de Souza, Maíra A. H. do Nascimento, Hanna Diniz, Estevão Vargas, Lívia P. Coelho"
+date: '02/05/2022'
+output: 
+   
+   pdf_document:
+     toc: yes
+     toc_depth: 5
+   html_document:
+     df_print: paged
+     toc: yes
+     toc_depth: 5
+link-citations: yes
+bibliography: references.bib
+csl: universidade-do-estado-do-rio-de-janeiro-abnt.csl
+---
+
+# Objetivo: Classificação, usando Regressão Logística E Árvore de Decisão
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Pacotes utilizados
+
+Relação dos pacotes do R utilizados no trabalho
+
+     Pacotes utilizados no trabalho:
+
+        # tidyverse
+        # patchwork
+        # caret
+        # corrplot
+        # corrgram
+        # tree
+        # xtable
+        # flextable
+        # smotefamily
+        # tree
+
+```{r packages,  message=FALSE, warning=FALSE}
+library(tidyverse)
+
+library(caret)
+
+```
+
+## Carregar o banco para análise
+
+Tivemos que manipular o banco de dados no excel para modificar os delimitadores. 
+Em português utilizamos a vírgula como delimitador de casa decimal e ponto para milhares.
+
+```{r carrega banco, message=FALSE, warning=FALSE}
+
+banco <- read_csv("EXAMES-PNS-2013-selec.csv", locale = locale(decimal_mark = ",")) 
+# tem que informar para o R o marcador de decimal do arquivo a ser importado.
+
+```
+
+### Visualização dos nomes das variáveis, da dimensão e estrutura do banco de dados
+
+Observamos que os nomes das variáveis estão em códigos, o banco de dados tem 8952 
+observações e 377 variáveis.
+
+Diversas variáveis apresentam um número significativo de "NAs" e o tratamento será 
+avaliado posteriormente.
+
+```{r detalhes, include=TRUE, eval=TRUE, results='hide'}
+
+names(banco)
+
+glimpse(banco)
+
+```
+
+```{r dimensao banco}
+
+dim(banco)
+
+```
+
+
+# Desfecho
+
+**Diagnostico de Diabetes mellitus (DM)**
+
+Metodologia:
+
+-   Hemoglobina glicada : Diretrizes Sociedade Brasileira de Diabetes 2019-2020[@forti2020diretrizes]
+-   Diagnóstico prévio de DM
+
+            # Aspectos técnicos e laboratoriais de diagnóstico e acompanhamento 
+            do diabetes mellitus.
+             DM -> Hb glicada >= 6.5%.
+
+            # Consideramos como diabéticos as pessoas que tiveram diagnóstico 
+            de diabetes por algum médico, incluindo diabetes gestacional 
+            (variável Q030 = 1 ou 2) e/ou hemoglobina glicada >= 6.5%.
+
+            # Z034 Hemoglobina Glicosilada (em %) + Q030 (diagnóstico de dibetes 
+            por médico, incluindo gestacional)
+
+Número de pacientes com a Hb glicada elevada
+
+          Ao todo, 595 pessoas tinham a Hb glicada acima de 6.5%
+          
+```{r Hb glicada elevada}
+
+banco <- banco %>% 
+  mutate(hb_glic = if_else(Z034 >= 6.5, "Sim", "Não")) 
+
+banco %>% 
+  group_by(hb_glic) %>% 
+  summarise(N = n())
+
+```
+
+
+Número de pacientes com diagnóstico prévio de diabetes.
+
+          Nessa população, 640 pessoas foram previamente diagnosticadas com DM.
+          
+```{r diag diabetes}
+
+banco <- banco %>% 
+  mutate(diabetes_prev = if_else(Q030 == 1 | Q030 == 2, "Sim", "Não"))
+
+banco %>% 
+  group_by(diabetes_prev) %>% 
+  summarise(N = n())
+
+```
+
+Relação entre pacientes com Hb glicada elevada e diagnóstico prévio de diabetes.
+
+        Incluindo as duas condições anteriores, temos 923 pacientes com diabetes 
+        por uma e/ou outra condição.
+
+```{r diabetes previo vs hb glic, warning=FALSE, message=FALSE}
+
+banco %>% 
+  group_by(diabetes_prev, hb_glic) %>% 
+  summarise(N = n())
+
+```
+
+```{r diabetes}
+
+banco <- banco %>% 
+  mutate(diabetes = if_else(Z034 >= 6.5 | Q030 == 1 | Q030 == 2 , "Sim", "Não"))
+# criação da variável 'diabetes' de acordo com os parâmetros definidos.
+
+```
+
+Visualização da distribuição de diabetes na população de estudo
+
+```{r visualizar diabetes}
+
+banco %>% 
+  group_by(diabetes) %>% 
+  summarise(N = n())
+
+```
+
+# Variáveis preditoras
+
+A variáveis preditoras foram selecionadas com base no artigo de Nascimento et. al.[@nascimento2003diabetes] A partir do [dicionário de variáveis](dicionario_de_variaveis_ex_ames_pns_2013.xlsx) do banco de dados.
+
+      Code-book:
+      
+      # Z001    Sexo    
+      #         1   Masculino
+      #         2   Feminino
+      
+      # Z002    Idade       Anos
+      
+      # IMC:
+          imc = peso(kg)/altura(m)^2
+          z004 = peso (kg); z005 = altura em cm.
+      # imc = Z004 / ((Z005)/100)^2) 
+      
+      # W00303 -> Circunferência da cintura - Final (em cm)
+      
+      # Z031    Colesterol Total (em mg/dL)
+      # Z032    HDL Colesterol (em mg/dL)
+      # Z033    LDL Colesterol (em mg/dL)
+      
+      # vldl = Z031- (Z032 + Z033) # segundo Nascimento et. al., o nível de vldl 
+      foi a variável com maior correlação com risco de diabetes
+
+      # Z003    Cor ou raça 
+              #         1   Branca
+              #         2   Preta
+              #         3   Amarela
+              #         4   Parda
+              #         5   Indígena
+              #         9   Ignorado
+          
+      # regiao -> Região do país -> pode haver alguma relação com o tipo de 
+      alimentação
+            # 1 Norte
+            # 2 Nordeste
+            # 3 Sudeste
+            # 4 Sul
+            # 5 Centro-Oeste
+            
+      # VDD004 ->   Nível de instrução mais elevado alcançado (pessoas de 5 anos 
+      ou mais de idade)  
+                    #       1   Sem instrução
+                    #       2   Fundamental incompleto ou equivalente
+                    #       3   Fundamental completo ou equivalente
+                    #       4   Médio incompleto ou equivalente
+                    #       5   Médio completo ou equivalente
+                    #       6   Superior incompleto ou equivalente
+                    #       7   Superior completo 
+                    #       .   Não aplicável
+        
+        
+## Banco de trabalho
+
+Seleção de variáveis:
+
+      Obs: criação de variável vldl e imc.
+
+```{r banco_trab}
+
+banco_trab <- banco %>% 
+  mutate(
+    vldl = (Z031- (Z032+ Z033)),
+    imc = round((z004 / ((z005)/100)^2), digits = 1)) %>% 
+  # arredonda o IMC com uma casa decimal
+  select(diabetes, Z001, Z002,imc, W00303, Z031:Z033,vldl, Z003, VDD004, regiao) 
+  
+```
+
+## Detalhes do banco de trabalho
+
+```{r ver banco_trab}
+
+glimpse(banco_trab)
+
+```
+
+Transformação das variáveis categóricas em fatores
+
+      As variáveis que foram importadas como números foram recodificadas como fatores.
+
+```{r categoricas em fatores}
+
+banco_trab$Z001 <- as.factor(banco_trab$Z001)
+banco_trab$VDD004 <- as.factor(banco_trab$VDD004)
+banco_trab$regiao <- as.factor(banco_trab$regiao)
+  
+```
+
+### Avaliação da quantidade de "NAs" e porcentagem por variável
+
+Qual o máximo de NAs aceitáveis?[@dziura2013strategies]
+
+      Dependendo do tipo de estudo, pode ser aceitável entre 5 a 25%.
+      O ideal seria de 5% no máximo, mas são aceitáveis em alguns casos até 25%. 
+      Nós definimos que as variáveis deveriam ter menos do que 10% de "missing" 
+      para serem incluídas na análise.
+      
+
+```{r NAs, out.width= '70%', message=FALSE, warning=FALSE}
+
+banco_trab %>% 
+  summarise(N = n()) %>% 
+  tibble(Variaveis = colnames(banco_trab),
+         Missing =  colSums(is.na(banco_trab)),
+         Porcentagem = (colSums(is.na(banco_trab))*100/N)
+  ) %>% 
+  select(Variaveis:Porcentagem) %>% 
+  arrange((Porcentagem)) %>% 
+  xtable::xtable() %>% 
+  flextable::as_flextable() %>% 
+  flextable::footnote(j = 2:4, part = 'header',
+                      value = flextable::as_paragraph(
+                        c(Variaveis = "Variáveis observadas",
+                          Missing = "Número de valores não observados",
+                          Porcentagem = "Relação entre os valores não observados e
+                          o total de observações de cada variável (%)")),
+                      ref_symbols = c("a", "b", "c")
+                      )
+  
+```
+
+### Análise exploratória
+
+Após definirmos a variável desfecho e as possíveis preditoras, inicamos a análise exploratória.
+
+```{r sumario banco trabalho}
+
+summary(banco_trab)
+
+```
+
+Após a análise inicial, verificamos que as variáveis Z001(sexo) e Z003(raça) tinham 
+seus preenchimentos idênticos. Como a raça estava com preenchimento binário (1,2),
+ assumimos que houve erro no preencimento dessa variável.
+ 
+```{r retirando raca}
+
+banco_trab <- banco_trab %>% select(everything(), -Z003)
+
+```
+
+
+### Lidando com NAs da variável de desfecho
+
+        Dúvida: não seria melhor primeiro imputar dados faltantes nas variáveis 
+        preditoras antes de eliminar grande parte do banco de dados? Perderemos 
+        mais de 1300 observações retirando os NAs do desfecho. 
+        Preferimos imputar os missings pelas médias (retirando-se os outliers) antes
+        de retirar os faltantes da variável de desfecho.
+
+## Visualização dos dados
+
+#### Testes de outliers
+
+  Box plot:
+  
+
+```{r idade, warning=FALSE}
+
+banco_trab %>% 
+  ggplot(aes(Z002))+
+  geom_boxplot()
+
+```
+
+```{r imc, warning=FALSE}
+
+banco_trab %>% 
+  ggplot(aes(imc))+
+  geom_boxplot()
+
+```
+
+```{r vldl, warning=FALSE}
+
+banco_trab %>% 
+  ggplot(aes(vldl))+
+  geom_boxplot()
+
+```
+
+Teste outliers
+
+      Ausência de verdadeiros outliers em idade
+
+```{r outliers idade, warning=FALSE}
+
+
+  test <- EnvStats::rosnerTest(banco_trab$Z002, k=8)
+
+test$all.stats
+```
+
+
+      Valores de IMC acima de 50  foram considerados outliers
+
+```{r outliers imc, warning=FALSE}
+
+  test <- EnvStats::rosnerTest(banco_trab$imc, k=20)
+
+test$all.stats
+```
+
+
+    Valores acima de 100mg/dl foram considerados outliers no test. Temos que avaliar
+    a retirada do cálculo da média para imputação dos NAs. Mas vamos manter para 
+    avaliação dos modelos preditivos e retirar somente se melhorarem a predição.
+
+```{r outliers vldl, warning=FALSE}
+
+  test <- EnvStats::rosnerTest(banco_trab$vldl, k=67)
+
+test$all.stats
+```
+
+
+
+### Gráficos de caixa entre variável desfecho e variáveis numéricas:
+
+      Observamos que os pacientes mais com diabetes são mais idosos em geral, tem 
+                     o IMC, circunferência abdominal mais elevados.
+      
+
+```{r boxplot, warning=FALSE}
+library(patchwork)
+
+g1 <- ggplot(banco_trab, aes(diabetes, Z002)) +
+  geom_boxplot()
+
+g2 <- ggplot(banco_trab, aes(diabetes, imc)) +
+  geom_boxplot()
+
+g3 <- ggplot(banco_trab, aes(diabetes, W00303)) +
+  geom_boxplot()
+
+g4 <- ggplot(banco_trab, aes(diabetes, Z031)) +
+  geom_boxplot()
+
+g5 <- ggplot(banco_trab, aes(diabetes, vldl)) +
+  geom_boxplot()
+
+g6 <- ggplot(banco_trab, aes(diabetes, Z032)) +
+  geom_boxplot()
+
+g1 + g2 + g3 + g4 + g5 + g6
+
+```
+ 
+
+### Gráficos de dispersão:
+
+      W00303 -> Circunferência da cintura parece ter uma correlação linear com o IMC.
+      
+
+```{r dispersao, warning=FALSE}
+
+g5 <- ggplot(banco_trab, aes(Z002, imc))+
+  geom_point()
+
+g6 <- ggplot(banco_trab, aes(W00303, imc))+
+  geom_point()
+
+g7 <- ggplot(banco_trab, aes(vldl, imc))+
+  geom_point()
+
+g8 <- ggplot(banco_trab, aes(Z002, vldl))+
+  geom_point()
+
+g9 <- ggplot(banco_trab, aes(Z002, Z031))+
+  geom_point()
+
+g10 <- ggplot(banco_trab, aes(Z002, Z032))+
+  geom_point()
+
+g5 + g6 + g7 + g8 + g9 + g10
+
+```
+
+### Análise do IMC vs circunferência abdominal por diagnóstico de diabetes:
+
+      Como esperado, se verificarmos a presença ou não de diabetes, a relação entre
+      IMC e circunferência abdominal permanece.
+
+```{r}
+banco_trab %>% 
+  filter(!is.na(diabetes)) %>% 
+  ggplot(aes(imc, W00303))+
+  geom_point(aes(color = diabetes))
+
+
+```
+
+
+# Particionamento dos dados entre treino (70%) e teste(30%)
+
+```{r particionamento}
+
+set.seed(789)
+particionamento <- caret::createDataPartition(banco_trab$diabetes, 
+                                       # cria as partições de forma estratificada
+                                        p = 0.70,
+                                        list = FALSE) 
+#O parâmetro list = FALSE evita que o resultado seja armazenado em formato de lista.
+
+banco_train <- banco_trab[particionamento, ]
+banco_test <- banco_trab[-particionamento, ]
+
+
+```
+
+### Visualização do balanceamento
+
+```{r balanceamento treino}
+
+banco_train %>% ggplot(aes(x=diabetes)) + geom_bar(stat="count")
+
+
+```
+
+Relação diabetes no conjunto treinamento.
+
+```{r, tabela diabetes}
+table(banco_train$diabetes) 
+```
+
+## Pré-processamento conjunto de treino
+
+
+Sumário do banco treino
+
+```{r summary treino}
+
+summary(banco_train)
+
+```
+
+
+### Preenchendo os faltantes pela média
+
+        Decidimos filtrar os outliers antes de tirar a média para preencher os dados faltantes.
+        
+        Obs: IMC > 50 e VLDL > 100
+        
+
+```{r imput media}
+
+media_imc <- banco_train %>% 
+  filter(imc < 50) 
+
+
+banco_train$imc[is.na(banco_train$imc)] <- mean(media_imc$imc, na.rm = T)
+# preenche pela média sem outliers
+
+media_vldl <- banco_train %>% 
+  filter(vldl <= 100)
+
+banco_train$vldl[which(is.na(banco_train$vldl))] <- mean(media_vldl$vldl, na.rm = T)
+# preenche pela média sem outliers
+
+
+banco_train$W00303[which(is.na(banco_train$W00303))] <- mean(banco_train$W00303, na.rm = T)
+
+banco_train$Z031[which(is.na(banco_train$Z031))] <- mean(banco_train$Z031, na.rm = T)
+
+banco_train$Z032[is.na(banco_train$Z032)] <- mean(banco_train$Z032, na.rm = T)
+
+banco_train$Z033[is.na(banco_train$Z033)] <- mean(banco_train$Z033, na.rm = T)
+
+
+```
+
+        Observamos 5 dados faltantes na variável "regiao", substituimos pela moda.
+
+```{r input regiao}
+
+banco_train <- banco_train %>% 
+  mutate(
+    regiao = replace_na(regiao, '5') 
+    # poderia usar essa função (replace_na) para substituir os NAs das outras variáveis.
+  )
+
+```
+
+
+```{r summary treino_pos}
+
+summary(banco_train)
+```
+
+## Retirando as observações com 'missing' na variável desfecho
+
+      Retirar dos dois bancos 
+
+```{r missing}
+
+banco_train <- banco_train %>% 
+  filter(!is.na(diabetes))
+
+```
+
+
+Padronização das variáveis numéricas
+
+      Preferimos criar um banco com as variáveis numéricas padronizadas,
+      testando e comparando com o não padronizado, que é mais fácil de interpretar.
+
+```{r padronizacao}
+
+banco_train_pad <- banco_train %>% 
+  mutate(
+    Z002 = scale(Z002),
+    imc = scale(imc),
+    W00303 = scale(W00303),
+    Z031 = scale(Z031),
+    Z032 = scale(Z032),
+    Z033 = scale(Z033),
+    vldl = scale(vldl)
+    ) 
+
+```
+
+Correlação entre variáveis numéricas padronizadas
+
+      O colesterol total (Z031) tem uma alta relação com o LDL (Z033), como era de se esperar.
+      A correlação negativa entre vldl e HDL e LDL era esperada também, já que aquela 
+      é resultado da subtração do colesterol total pelas duas últimas.
+      A cirurncferência abdominal e o IMC também apresentaram uma correlação bem elevada.
+      
+
+```{r correl pad}
+
+correl <- banco_train_pad %>% 
+  select(where(is.numeric)) %>% 
+  cor(use = "pairwise")  # não estava funcionando da outra forma (sem o 'pairwise').
+
+corrplot::corrplot(correl, method = 'circle')
+
+
+```
+
+      A correção entre Colesterol total e LDL é de mais de 90% vamos analisar qual deve
+      ser retirada do modelo. Talvez o melhor seja retirar o colesterol total, pois é 
+      resultado da soma de três variáveis (VLD, HDL E LDL).
+      A correlação entre IMC e circubferência abdominal é de 79%, vamos testar as duas no
+      modelo, mas é possível que precise retirar uma delas.
+
+```{r correlacao num}
+library(corrgram)
+
+corrgram::corrgram(correl, lower.panel = panel.pts, upper.panel= panel.conf, 
+                   diag.panel = panel.density)
+
+```
+
+### Associação entre variáveis numéricas e desfecho
+
+      A única variável sem significância estatística foi o LDL.
+
+```{r num vs desfecho}
+
+t.test(banco_train_pad$Z002 ~ banco_train_pad$diabetes) #idade
+
+t.test(banco_train_pad$imc ~ banco_train_pad$diabetes) 
+
+t.test(banco_train_pad$W00303 ~ banco_train_pad$diabetes) #circunferência cintura
+
+t.test(banco_train_pad$Z031 ~ banco_train_pad$diabetes) # Colesterol total
+
+t.test(banco_train_pad$Z032 ~ banco_train_pad$diabetes) # HDL
+
+t.test(banco_train_pad$Z033 ~ banco_train_pad$diabetes) # LDL
+
+t.test(banco_train_pad$vldl ~ banco_train_pad$diabetes)
+
+```
+
+
+### Teste de variáveis categóricas
+
+      Todas as variáveis categóricas tiveram significância estatística.
+
+```{r categorica vs desfecho}
+
+chisq.test(banco_train_pad$Z001, banco_train_pad$diabetes) #sexo
+
+chisq.test(banco_train_pad$VDD004, banco_train_pad$diabetes) # grau de instrução
+
+chisq.test(banco_train_pad$regiao, banco_train_pad$diabetes) # região do Brasil.
+
+chisq.test(banco_train_pad$regiao, banco_train_pad$VDD004)
+
+```
+
+## Tratamento do desbalanceamento na varável desfecho
+
+``` {r ver desfecho}
+
+table(banco_train_pad$diabetes)
+
+```
+
+### Utilização do 'SMOTE'do pacote 'smotefamily' para criar observações 
+
+      Obs: tem que usar somente variáveis numéricas
+      
+```{r retorna para num}
+
+banco_train_pad <- banco_train_pad %>% 
+  mutate(
+    diabetes = if_else(diabetes == "Sim", 1, 2),
+    Z001 = as.numeric(Z001),
+    VDD004 = as.numeric(VDD004),
+    regiao = as.numeric(regiao)
+  )
+
+```
+
+Criando observações para equilibrar o desfecho no banco:
+
+```{r balanco do banco}
+
+banco_smote <- smotefamily::SMOTE(
+  banco_train_pad[, 2:11], 
+  unlist(as.numeric(banco_train_pad$diabetes)),
+  K = 5, dup_size = 6
+)
+```
+
+
+```{r data smote}
+
+banco_smote <- banco_smote$data
+
+```
+
+
+Desfecho mais equilibrado:
+
+```{r banco equilibrado}
+
+table(banco_smote$class) # a variável passa a se chamar 'class'
+
+```
+
+Retorna para o nome original e fatores
+
+```{r retorno banco}
+
+
+banco_train_pad <- banco_smote %>% 
+  mutate(
+    Z001 = if_else(Z001 == 1, "M", "F"),
+    class = if_else(class == 1, "Sim", "Não"),
+    VDD004 = as.factor(round(VDD004)),
+    regiao = as.factor(round(regiao))
+  )
+
+```
+
+# Modelagem para regressão logística
+
+- **Modelo 1** - sem LDL e circunferência abdominal
+
+- **Modelo 2** - sem LDL e I<C
+
+        O modelo com a circunferência abdominal parece um pouco melhor do que o com IMC.
+        
+- **Modelo 3** - sem Colesterol, LDL e IMC
+
+- **MOdelo 4** - com colestero. Sem LDL, HDL e IMC.
+
+```{r models}
+
+mod_1 <- train(class ~ Z001 + Z002 + imc + Z031 +Z032  + VDD004 + regiao +
+                        vldl ,
+                      data = banco_train_pad,
+                      method = "glm",
+                      family = binomial(link = "logit")
+)
+
+  mod_2 <- train(class ~ Z001 + Z002 + W00303 + Z031 +Z032  + VDD004 + # HDL e Colesterol
+                   regiao + vldl , # com circunferência abdominal
+                      data = banco_train_pad,
+                      method = "glm",
+                      family = binomial(link = "logit")
+)
+ 
+  mod_3 <- train(class ~ Z001 + Z002 + W00303  + Z032  + VDD004 + regiao + # com HDL
+                        vldl ,
+                      data = banco_train_pad,
+                      method = "glm",
+                      family = binomial(link = "logit")
+)   
+
+  mod_4 <- train(class ~ Z001 + Z002 + W00303  + Z031  + VDD004 + regiao + # com colesterol
+                 vldl ,
+               data = banco_train_pad,
+               method = "glm",
+               family = binomial(link = "logit")
+)  
+  
+  mod_5 <- train(class ~ Z002 + W00303  + Z031  + VDD004 + regiao + # Sem o gênero
+                 vldl ,
+               data = banco_train_pad,
+               method = "glm",
+               family = binomial(link = "logit")
+)    
+  
+
+```
+  
+
+- Sumário de modelos
+
+**Modelo 1**
+
+```{r mod 1}
+
+summary(mod_1)
+
+```
+
+**Modelo 2**
+
+```{r mod 2}
+
+summary(mod_2)
+
+```
+
+**Modelo 3**
+
+```{r mod 3}
+
+summary(mod_3)
+
+```
+
+**Modelo 4**
+
+```{r mod 4}
+
+summary(mod_4)
+
+```
+
+**Modelo 5**
+
+```{r mod 5}
+
+summary(mod_5)
+
+```
+
+### Predição no conjunto de treino:
+
+    Identificamos que os melhores modelos são o 2 e o 4. 
+    Como a diferença entre o AIC é pequena e o 4 tem uma variável a menos, optamos por
+    utilizar o 4. 
+    Retiramos as variáveis que não fazem parte do modelo.
+
+```{r predicao treino}
+
+banco_train_pad$Z032 <- NULL
+
+banco_train_pad$Z033 <- NULL
+
+banco_train_pad$Z032 <- NULL
+
+banco_train_pad$imc <- NULL
+
+yp_treino <- predict(mod_4, newdata = banco_train_pad[, 1:8])
+
+table(banco_train_pad$class, yp_treino)
+
+
+```
+
+### Matriz de confusão no treino:
+
+      Aplicando o modelo nos dados de treinamento, encontramos uma sensibilidade de 71%,
+      especificidade de 72% e acurácia de 72%.
+
+```{r matriz confusao treino}
+
+caret::confusionMatrix(as.factor(banco_train_pad$class), yp_treino, 
+                       positive = "Sim")
+
+```
+
+
+## Pré-processamento conjunto de teste
+
+### Manipulando os Nas com os mesmo critérios do treino, porém com os dados do teste.
+
+```{r processo teste}
+
+# media_imc <- banco_test %>% 
+#   filter(imc < 50) 
+# 
+# banco_test$imc[is.na(banco_test$imc)] <- mean(media_imc$imc, na.rm = T)
+# # preenche pela média sem outliers
+# 
+
+media_vldl <- banco_test %>%   ## O IMC não faz parte do modelo escolhido.
+  filter(vldl <= 100)
+
+banco_test$vldl[which(is.na(banco_test$vldl))] <- mean(media_vldl$vldl, na.rm = T)
+# preenche pela média sem outliers
+
+
+banco_test$W00303[which(is.na(banco_test$W00303))] <- mean(banco_test$W00303, na.rm = T)
+
+banco_test$Z031[which(is.na(banco_test$Z031))] <- mean(banco_test$Z031, na.rm = T)
+
+# banco_test$Z032[is.na(banco_test$Z032)] <- mean(banco_test$Z032, na.rm = T)
+# 
+# banco_test$Z033[is.na(banco_test$Z033)] <- mean(banco_test$Z033, na.rm = T)
+
+## LDL e HDL não fazem parte do modelo escolhido
+
+
+banco_test <- banco_test %>% 
+  select(-imc, -Z032, -Z033) %>% 
+  mutate(
+    regiao = replace_na(regiao, '5') 
+    # poderia usar essa função (replace_na) para substituir os NAs das outras variáveis.
+  )
+
+
+```
+
+
+```{r }
+
+summary(banco_test)
+
+```
+
+Retirando as observações NA do desfecho no teste
+
+```{r missing defecho teste}
+
+banco_test <- banco_test %>% 
+  filter(!is.na(diabetes))
+
+```
+
+
+Padronização das variáeis numéricas no banco de teste
+
+```{r padronizar teste}
+
+banco_test_pad <- banco_test %>% 
+  mutate(
+    Z001 = if_else(Z001 == 1, "M", "F"),
+    Z002 = scale(Z002),
+    # imc = scale(imc),
+    W00303 = scale(W00303),
+    Z031 = scale(Z031),
+    # Z032 = scale(Z032),
+    # Z033 = scale(Z033),
+    vldl = scale(vldl)
+    ) 
+```
+
+## Predição e matriz de confusão no conjunto de TESTE
+
+```{r predicao teste} 
+
+yp <- predict(mod_4, newdata = banco_test_pad[, 1:8])
+
+table(banco_test_pad$diabetes, yp)
+
+```
+
+
+Matriz de confusão dos dados de teste.
+
+    No nosso banco de teste, a acurácia manteve-se estável, de 72% para 71%, em relação ao banco 
+    de treinamento. Porém, houve uma redução da sensibilidade de 71% para 67%, mas estabilidade da
+    especificidade em 72%.
+    Talvez tenha ocorrido um overfitting, mas os resultados são muito semelhantes.
+    Parece um bom modelo para identificar pessaos com alta probabilidade de ter diabetes.
+
+```{r matriz confus test}
+
+caret::confusionMatrix(yp, as.factor(banco_test_pad$diabetes) , positive = "Sim")
+
+```
+
+
+
+# Árvore de decisão
+
+Vamos utilizar todas as variáveis incialmente
+
+
+## Pré-processamento dos dados
+
+    Optamos utilizar os dados sem padronizar para melhorar a interpretação
+
+### Pre-processamento treino.
+
+```{r preproc arvore}    
+
+banco_train_smote <- banco_train %>% 
+  mutate(
+    diabetes = if_else(diabetes == "Sim", 1, 2),
+    Z001 = as.numeric(Z001),
+    VDD004 = as.numeric(VDD004),
+    regiao = as.numeric(regiao)
+  )
+
+
+smote_train <- smotefamily::SMOTE(
+  banco_train_smote[, 2:11], 
+  unlist(as.numeric(banco_train_smote$diabetes)),
+  K = 5, dup_size = 6
+)
+
+
+smote_train <- smote_train$data
+
+table(smote_train$class)
+
+```
+
+```{r banco train arv}
+
+banco_train_arv <- smote_train %>% 
+  mutate(
+    Z001 = as.factor(if_else(Z001 == 1, "M", "F") ),
+    class = as.factor(if_else(class == 1, "Sim", "Não") ),
+    VDD004 = as.factor(round(VDD004)),
+    regiao = as.factor(round(regiao))
+  ) %>% 
+  select(-imc, -Z032, -Z033)
+
+summary(banco_train_arv)
+
+```
+
+```{r cria arvore}
+
+library(tree)
+
+Arvore_dec_mod_4 <- tree::tree(class~.,data = banco_train_arv, method = 'class')
+
+summary(Arvore_dec_mod_4)
+
+```
+
+```{r plot arvore}
+
+plot(Arvore_dec_mod_4)
+
+text(Arvore_dec_mod_4)
+
+```
+
+```{r arvore}
+
+Arvore_dec_mod_4
+
+```
+
+
+### Arvore banco teste
+
+```{r banco teste}
+
+banco_test_arv <- banco_test %>% 
+  mutate(
+    Z001 = as.factor(if_else(Z001 == 1, "M", "F") ),
+    diabetes = as.factor(diabetes),
+    VDD004 = as.factor(VDD004),
+    regiao = as.factor(regiao)
+  )
+
+```
+
+Tabela previsão vs teste
+```{r table test}
+Arv_dec_test_pred <- predict(Arvore_dec_mod_4, banco_test_arv[, 1:8], type = 'class')  
+
+table(banco_test_arv$diabetes, Arv_dec_test_pred)
+
+```
+
+Matriz de confusão no teste
+
+```{r matriz conf test}
+
+caret::confusionMatrix(Arv_dec_test_pred, banco_test_arv$diabetes)
+
+
+```
+
+Arvore de decisão do teste
+
+```{rarvore teste}
+
+Cross_validation <- tree::cv.tree(Arvore_dec_mod_4, FUN=prune.misclass, K = 10)
+
+plot(Cross_validation)
+
+```
+
+Árvore podada
+
+```{r arvore poda}
+
+ArvorePodada = prune.misclass(Arvore_dec_mod_4, best =6)
+
+plot(ArvorePodada)
+text(ArvorePodada)
+ArvorePodada
+
+```
+
+
+## Referências
