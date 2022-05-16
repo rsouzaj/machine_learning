@@ -1,7 +1,8 @@
 ---
-title: "Atividade avaliativa 1 - Aula de introdução ao Aprendizado de Máquina"
+title: "Atividade 1 - Aula de introdução ao Aprendizado de Máquina"
 author: "Ricardo J. de Souza, Maíra A. H. do Nascimento, Hanna Diniz, Estevão Vargas, Lívia P. Coelho"
 date: '02/05/2022'
+lang: PT
 output: 
    
    pdf_document:
@@ -16,17 +17,19 @@ bibliography: references.bib
 csl: universidade-do-estado-do-rio-de-janeiro-abnt.csl
 ---
 
-# Objetivo: Classificação, usando Regressão Logística E Árvore de Decisão
+# Objetivo: Classificação usando Regressão Logística E Árvore de Decisão
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+## Repositório
+
+Documentação e códigos utilizados para criar este documento no link: [introdução ao aprendizado de máquina.](https://github.com/rsouzaj/machine_learning)
+
 ## Pacotes utilizados
 
-Relação dos pacotes do R utilizados no trabalho
-
-     Pacotes utilizados no trabalho:
+Pacotes do R utilizados no trabalho:
 
         # tidyverse
         # patchwork
@@ -48,8 +51,7 @@ library(caret)
 
 ## Carregar o banco para análise
 
-Tivemos que manipular o banco de dados no excel para modificar os delimitadores. 
-Em português utilizamos a vírgula como delimitador de casa decimal e ponto para milhares.
+Banco de dados utilizado: [EXAMES-PNS-2013](EXAMES-PNS-2013-selec.csv)
 
 ```{r carrega banco, message=FALSE, warning=FALSE}
 
@@ -83,7 +85,7 @@ dim(banco)
 
 # Desfecho
 
-**Diagnostico de Diabetes mellitus (DM)**
+**Diagnóstico de Diabetes mellitus (DM)**
 
 Metodologia:
 
@@ -95,7 +97,7 @@ Metodologia:
              DM -> Hb glicada >= 6.5%.
 
             # Consideramos como diabéticos as pessoas que tiveram diagnóstico 
-            de diabetes por algum médico, incluindo diabetes gestacional 
+            de diabetes por algum médico, incluindo diabetes gestacional, 
             (variável Q030 = 1 ou 2) e/ou hemoglobina glicada >= 6.5%.
 
             # Z034 Hemoglobina Glicosilada (em %) + Q030 (diagnóstico de dibetes 
@@ -165,9 +167,11 @@ banco %>%
 
 # Variáveis preditoras
 
-A variáveis preditoras foram selecionadas com base no artigo de Nascimento et. al.[@nascimento2003diabetes] A partir do [dicionário de variáveis](dicionario_de_variaveis_ex_ames_pns_2013.xlsx) do banco de dados.
+As variáveis preditoras foram selecionadas com base no artigo de Nascimento et. al.[@nascimento2003diabetes]
 
-      Code-book:
+[dicionário de variáveis](dicionario_de_variaveis_ex_ames_pns_2013.xlsx) do banco de dados.
+
+      Variáveis preditoras de acordo com o dicionário:
       
       # Z001    Sexo    
       #         1   Masculino
@@ -197,8 +201,8 @@ A variáveis preditoras foram selecionadas com base no artigo de Nascimento et. 
               #         5   Indígena
               #         9   Ignorado
           
-      # regiao -> Região do país -> pode haver alguma relação com o tipo de 
-      alimentação
+      # região -> Região do país 
+      
             # 1 Norte
             # 2 Nordeste
             # 3 Sudeste
@@ -227,14 +231,14 @@ Seleção de variáveis:
 
 banco_trab <- banco %>% 
   mutate(
-    vldl = (Z031- (Z032+ Z033)),
+    vldl = (Z031- (Z032+ Z033)), # VLDL = Colesterol total - (HDL + LDL)
     imc = round((z004 / ((z005)/100)^2), digits = 1)) %>% 
   # arredonda o IMC com uma casa decimal
   select(diabetes, Z001, Z002,imc, W00303, Z031:Z033,vldl, Z003, VDD004, regiao) 
   
 ```
 
-## Detalhes do banco de trabalho
+### Detalhes do banco de trabalho
 
 ```{r ver banco_trab}
 
@@ -278,10 +282,10 @@ banco_trab %>%
   flextable::as_flextable() %>% 
   flextable::footnote(j = 2:4, part = 'header',
                       value = flextable::as_paragraph(
-                        c(Variaveis = "Variáveis observadas",
-                          Missing = "Número de valores não observados",
+                        c(Variaveis = "Variáveis observadas;",
+                          Missing = "Número de valores não observados;",
                           Porcentagem = "Relação entre os valores não observados e
-                          o total de observações de cada variável (%)")),
+                          o total de observações de cada variável (%).")),
                       ref_symbols = c("a", "b", "c")
                       )
   
@@ -299,7 +303,15 @@ summary(banco_trab)
 
 Após a análise inicial, verificamos que as variáveis Z001(sexo) e Z003(raça) tinham 
 seus preenchimentos idênticos. Como a raça estava com preenchimento binário (1,2),
- assumimos que houve erro no preencimento dessa variável.
+ assumimos que houve erro no preenchimento dessa variável.
+ 
+```{r Z001 vs Z003}
+
+table(banco_trab$Z001, banco_trab$Z003)
+
+```
+ 
+ Exclusão da variável raça (Z003).
  
 ```{r retirando raca}
 
@@ -315,6 +327,8 @@ banco_trab <- banco_trab %>% select(everything(), -Z003)
         mais de 1300 observações retirando os NAs do desfecho. 
         Preferimos imputar os missings pelas médias (retirando-se os outliers) antes
         de retirar os faltantes da variável de desfecho.
+        
+        Talvez a melhor opção seja aplicar a mediana nas variáveis com muitos outliers.
 
 ## Visualização dos dados
 
@@ -322,7 +336,8 @@ banco_trab <- banco_trab %>% select(everything(), -Z003)
 
   Box plot:
   
-
+-  **Idade**
+  
 ```{r idade, warning=FALSE}
 
 banco_trab %>% 
@@ -331,6 +346,8 @@ banco_trab %>%
 
 ```
 
+-  **IMC**
+  
 ```{r imc, warning=FALSE}
 
 banco_trab %>% 
@@ -338,6 +355,17 @@ banco_trab %>%
   geom_boxplot()
 
 ```
+
+-  **Circunferência da cintura**
+ 
+```{r cintura}
+banco_trab %>% 
+  ggplot(aes(W00303))+
+  geom_boxplot()
+
+```
+
+-  **VLDL**
 
 ```{r vldl, warning=FALSE}
 
@@ -347,7 +375,7 @@ banco_trab %>%
 
 ```
 
-Teste outliers
+### Teste outliers
 
       Ausência de verdadeiros outliers em idade
 
@@ -371,8 +399,9 @@ test$all.stats
 
 
     Valores acima de 100mg/dl foram considerados outliers no test. Temos que avaliar
-    a retirada do cálculo da média para imputação dos NAs. Mas vamos manter para 
-    avaliação dos modelos preditivos e retirar somente se melhorarem a predição.
+    a retirada do cálculo da média para imputação dos NAs ou utilizar a mediana.
+    Mas vamos manter para avaliação dos modelos preditivos e retirar somente se 
+    melhorarem a predição.
 
 ```{r outliers vldl, warning=FALSE}
 
@@ -383,10 +412,10 @@ test$all.stats
 
 
 
-### Gráficos de caixa entre variável desfecho e variáveis numéricas:
+### Gráficos de caixa entre variável desfecho e variáveis numéricas
 
       Observamos que os pacientes mais com diabetes são mais idosos em geral, tem 
-                     o IMC, circunferência abdominal mais elevados.
+      o IMC, circunferência abdominal mais elevados.
       
 
 ```{r boxplot, warning=FALSE}
@@ -415,7 +444,7 @@ g1 + g2 + g3 + g4 + g5 + g6
 ```
  
 
-### Gráficos de dispersão:
+### Gráficos de dispersão
 
       W00303 -> Circunferência da cintura parece ter uma correlação linear com o IMC.
       
@@ -444,10 +473,11 @@ g5 + g6 + g7 + g8 + g9 + g10
 
 ```
 
-### Análise do IMC vs circunferência abdominal por diagnóstico de diabetes:
+### Análise do IMC vs circunferência abdominal por diagnóstico de diabetes
 
-      Como esperado, se verificarmos a presença ou não de diabetes, a relação entre
-      IMC e circunferência abdominal permanece.
+      Como esperado, independentemente de diabetes a relação entre
+      IMC e circunferência abdominal permanece linear. Porém, as pessoas com DM têm 
+      valores mais elevados de IMC e circunferência da cintura do que os sem diabetes.
 
 ```{r}
 banco_trab %>% 
@@ -494,7 +524,7 @@ table(banco_train$diabetes)
 ## Pré-processamento conjunto de treino
 
 
-Sumário do banco treino
+Sumário do banco treino.
 
 ```{r summary treino}
 
@@ -507,7 +537,7 @@ summary(banco_train)
 
         Decidimos filtrar os outliers antes de tirar a média para preencher os dados faltantes.
         
-        Obs: IMC > 50 e VLDL > 100
+        Obs: IMC > 50 e VLDL > 100.
         
 
 ```{r imput media}
@@ -557,7 +587,7 @@ summary(banco_train)
 
 ## Retirando as observações com 'missing' na variável desfecho
 
-      Retirar dos dois bancos 
+      Retirar dos dois bancos.
 
 ```{r missing}
 
@@ -567,7 +597,7 @@ banco_train <- banco_train %>%
 ```
 
 
-Padronização das variáveis numéricas
+### Padronização das variáveis numéricas
 
       Preferimos criar um banco com as variáveis numéricas padronizadas,
       testando e comparando com o não padronizado, que é mais fácil de interpretar.
@@ -587,7 +617,7 @@ banco_train_pad <- banco_train %>%
 
 ```
 
-Correlação entre variáveis numéricas padronizadas
+Correlação entre variáveis numéricas padronizadas.
 
       O colesterol total (Z031) tem uma alta relação com o LDL (Z033), como era de se esperar.
       A correlação negativa entre vldl e HDL e LDL era esperada também, já que aquela 
@@ -659,7 +689,7 @@ chisq.test(banco_train_pad$regiao, banco_train_pad$VDD004)
 
 ```
 
-## Tratamento do desbalanceamento na varável desfecho
+## Tratamento do desbalanceamento na variável desfecho
 
 ``` {r ver desfecho}
 
@@ -669,7 +699,7 @@ table(banco_train_pad$diabetes)
 
 ### Utilização do 'SMOTE'do pacote 'smotefamily' para criar observações 
 
-      Obs: tem que usar somente variáveis numéricas
+      Obs: tem que usar somente variáveis numéricas.
       
 ```{r retorna para num}
 
@@ -683,7 +713,7 @@ banco_train_pad <- banco_train_pad %>%
 
 ```
 
-Criando observações para equilibrar o desfecho no banco:
+Criando observações para equilibrar o desfecho no banco.
 
 ```{r balanco do banco}
 
@@ -702,7 +732,7 @@ banco_smote <- banco_smote$data
 ```
 
 
-Desfecho mais equilibrado:
+Desfecho mais equilibrado.
 
 ```{r banco equilibrado}
 
@@ -710,7 +740,7 @@ table(banco_smote$class) # a variável passa a se chamar 'class'
 
 ```
 
-Retorna para o nome original e fatores
+Retorna para o nome original e fatores.
 
 ```{r retorno banco}
 
@@ -727,15 +757,15 @@ banco_train_pad <- banco_smote %>%
 
 # Modelagem para regressão logística
 
-- **Modelo 1** - sem LDL e circunferência abdominal
+- **Modelo 1** - sem LDL e circunferência abdominal.
 
-- **Modelo 2** - sem LDL e I<C
+- **Modelo 2** - sem LDL e IMC.
 
         O modelo com a circunferência abdominal parece um pouco melhor do que o com IMC.
         
-- **Modelo 3** - sem Colesterol, LDL e IMC
+- **Modelo 3** - sem Colesterol, LDL e IMC.
 
-- **MOdelo 4** - com colestero. Sem LDL, HDL e IMC.
+- **MOdelo 4** - com colesterol. Sem LDL, HDL e IMC.
 
 ```{r models}
 
@@ -820,7 +850,7 @@ summary(mod_5)
 
 ```
 
-### Predição no conjunto de treino:
+### Predição no conjunto de treino
 
     Identificamos que os melhores modelos são o 2 e o 4. 
     Como a diferença entre o AIC é pequena e o 4 tem uma variável a menos, optamos por
@@ -844,7 +874,7 @@ table(banco_train_pad$class, yp_treino)
 
 ```
 
-### Matriz de confusão no treino:
+### Matriz de confusão no treino
 
       Aplicando o modelo nos dados de treinamento, encontramos uma sensibilidade de 71%,
       especificidade de 72% e acurácia de 72%.
@@ -859,7 +889,7 @@ caret::confusionMatrix(as.factor(banco_train_pad$class), yp_treino,
 
 ## Pré-processamento conjunto de teste
 
-### Manipulando os Nas com os mesmo critérios do treino, porém com os dados do teste.
+### Manipulando os Nas com os mesmo critérios do treino, porém com os dados do teste
 
 ```{r processo teste}
 
@@ -905,7 +935,7 @@ summary(banco_test)
 
 ```
 
-Retirando as observações NA do desfecho no teste
+Retirando as observações NA do desfecho no teste.
 
 ```{r missing defecho teste}
 
@@ -915,7 +945,7 @@ banco_test <- banco_test %>%
 ```
 
 
-Padronização das variáeis numéricas no banco de teste
+Padronização das variáveis numéricas no banco de teste.
 
 ```{r padronizar teste}
 
@@ -949,7 +979,7 @@ Matriz de confusão dos dados de teste.
     de treinamento. Porém, houve uma redução da sensibilidade de 71% para 67%, mas estabilidade da
     especificidade em 72%.
     Talvez tenha ocorrido um overfitting, mas os resultados são muito semelhantes.
-    Parece um bom modelo para identificar pessaos com alta probabilidade de ter diabetes.
+    Parece um bom modelo para identificar pessoas com alta probabilidade de ter diabetes.
 
 ```{r matriz confus test}
 
@@ -958,17 +988,16 @@ caret::confusionMatrix(yp, as.factor(banco_test_pad$diabetes) , positive = "Sim"
 ```
 
 
-
 # Árvore de decisão
 
-Vamos utilizar todas as variáveis incialmente
+Vamos utilizar todas as variáveis incialmente.
 
 
 ## Pré-processamento dos dados
 
-    Optamos utilizar os dados sem padronizar para melhorar a interpretação
+    Optamos utilizar os dados sem padronizar para melhorar a interpretação.
 
-### Pre-processamento treino.
+### Pré-processamento treino
 
 ```{r preproc arvore}    
 
@@ -1032,9 +1061,16 @@ text(Arvore_dec_mod_4)
 Arvore_dec_mod_4
 
 ```
+Existe um desbalanceamento entre os sexos, com mais mulheres com critérios de diabetes.
+
+```{r diabetes e sexo}
+
+table(banco_train_arv$class, banco_train_arv$Z001 )
+
+```
 
 
-### Arvore banco teste
+### Árvore banco teste
 
 ```{r banco teste}
 
@@ -1048,7 +1084,8 @@ banco_test_arv <- banco_test %>%
 
 ```
 
-Tabela previsão vs teste
+Tabela previsão vs teste.
+
 ```{r table test}
 Arv_dec_test_pred <- predict(Arvore_dec_mod_4, banco_test_arv[, 1:8], type = 'class')  
 
@@ -1056,18 +1093,18 @@ table(banco_test_arv$diabetes, Arv_dec_test_pred)
 
 ```
 
-Matriz de confusão no teste
+Matriz de confusão no teste.
 
 ```{r matriz conf test}
 
-caret::confusionMatrix(Arv_dec_test_pred, banco_test_arv$diabetes)
+caret::confusionMatrix(Arv_dec_test_pred, banco_test_arv$diabetes, positive = "Sim")
 
 
 ```
 
-Arvore de decisão do teste
+Arvore de decisão do teste.
 
-```{rarvore teste}
+```{r arvore teste}
 
 Cross_validation <- tree::cv.tree(Arvore_dec_mod_4, FUN=prune.misclass, K = 10)
 
@@ -1075,7 +1112,7 @@ plot(Cross_validation)
 
 ```
 
-Árvore podada
+Árvore podada.
 
 ```{r arvore poda}
 
@@ -1088,4 +1125,21 @@ ArvorePodada
 ```
 
 
-## Referências
+# Considerações finais
+
+- O R não trabalha muito bem com "*character*"; é melhor trabalhar com as variáveis como 
+*factor* ou *numeric* e somente na última fazer modificar os labels;
+
+- Nosso modelo está alinhado com o modelo teórico, como no artigo de referência[@nascimento2003diabetes].
+
+    A circunferência abdominal tem uma relação maior com o diagnóstico de DM do que 
+    o IMC. O VLDL também tem elevada associação com o DM.
+    
+- Há um problema com desbalanceamento entre os gêneros (masculino e femino). Há muito
+mais mulheres com dianóstico de diabetes do que homens.
+
+       Na construção da árvore parece que somente o fato de ser homem já reduz a 
+       possibilidade de DM.
+
+
+# Referências
