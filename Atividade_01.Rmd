@@ -1141,5 +1141,6 @@ mais mulheres com dianóstico de diabetes do que homens.
        Na construção da árvore parece que somente o fato de ser homem já reduz a 
        possibilidade de DM.
 
+- Usar o SMOOTH apenas uma vez, para que os resultados da árvore de decisão e a regressão.
 
 # Referências
